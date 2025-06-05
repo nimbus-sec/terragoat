@@ -1,37 +1,66 @@
-name: build
+name: Build and Push App
+
 on:
   push:
-    branches:
-      - master
-jobs:
-  build:
-    runs-on: [self-hosted, public, linux, x64]
-    steps:
-      - uses: actions/checkout@v2
-        name: Checkout repo
-        with:
-          fetch-depth: 0
-      - name: Run yor action
-        uses: bridgecrewio/yor-action@main
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v1
-        with:
-          python-version: 3.7
-      - name: Update documentation
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git fetch --tags
-          git pull
-          latest_tag=$(git describe --tags `git rev-list --tags --max-count=1`)
-          echo "latest tag: $latest_tag"
-          new_tag=$(echo $latest_tag | awk -F. -v a="$1" -v b="$2" -v c="$3" '{printf("%d.%d.%d", $1+a, $2+b , $3+1)}')
-          echo "new tag: $new_tag"
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'Dockerfile'
+      - '.github/workflows/**'
 
-          pip install -U checkov
-          cat .github/template.md > README.md && checkov -d terraform -o github_failed_only -s >> README.md
-          git add README.md  || echo "No changes to commit"
-          git commit -m "update resource scan result doc" README.md || echo "No changes to commit"
-          git push origin
-          git tag $new_tag
-          git push origin $new_tag
+jobs:
+  build-and-push:
+    permissions:
+      checks: write 
+      contents: read 
+      security-events: write 
+      actions: read 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup cache
+        uses: actions/cache@v3
+        with:
+          path: cache
+          key: ${{ runner.os }}-cache-${{ hashFiles('**/sysdig-cli-scanner', '**/latest_version.txt', '**/db/main.db.meta.json', '**/scanner-cache/inlineScannerCache.db') }}
+          restore-keys: ${{ runner.os }}-cache-
+
+      - name: Download sysdig-cli-scanner if needed
+        run:  |
+          curl -sLO https://download.sysdig.com/scanning/sysdig-cli-scanner/latest_version.txt
+          mkdir -p ${GITHUB_WORKSPACE}/cache/db/
+          if [ ! -f ${GITHUB_WORKSPACE}/cache/latest_version.txt ] || [ $(cat ./latest_version.txt) != $(cat ${GITHUB_WORKSPACE}/cache/latest_version.txt) ]; then
+            cp ./latest_version.txt ${GITHUB_WORKSPACE}/cache/latest_version.txt
+            curl -sL -o ${GITHUB_WORKSPACE}/cache/sysdig-cli-scanner "https://download.sysdig.com/scanning/bin/sysdig-cli-scanner/$(cat ${GITHUB_WORKSPACE}/cache/latest_version.txt)/linux/amd64/sysdig-cli-scanner"
+            chmod +x ${GITHUB_WORKSPACE}/cache/sysdig-cli-scanner
+          else
+            echo "sysdig-cli-scanner latest version already downloaded"
+          fi
+
+      - name: Scan the image using sysdig-cli-scanner
+        env:
+          SECURE_API_TOKEN: ${{ secrets.SECURE_API_TOKEN }}
+        run: |
+          ${GITHUB_WORKSPACE}/cache/sysdig-cli-scanner \
+            --apiurl https://app.us4.sysdig.com \
+            --mode=iac \
+            --console-log \
+            --json-scan-result report.json \
+            --policy=alwayspass \
+            --dbpath=${GITHUB_WORKSPACE}/cache/db/ \
+            --cachepath=${GITHUB_WORKSPACE}/cache/scanner-cache/ \
+            --iac-scan-path: ./terraform
+
+      - name: Generate SARIF report
+        run: |
+          curl -sLO https://raw.githubusercontent.com/sysdiglabs/secure-inline-scan-examples/refs/heads/main/github/new-scan-engine/sysdig-to-sarif.py
+          python3 ${GITHUB_WORKSPACE}/sysdig-to-sarif.py report.json > results.sarif
+
+      - name: Upload scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+      
+
