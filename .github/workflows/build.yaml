@@ -48,7 +48,6 @@ jobs:
             --iac \
             --console-log \
             --output-json report.json \
-            --cachepath=${GITHUB_WORKSPACE}/cache/scanner-cache/ \
             --iac-scan-path: ./terraform
 
       - name: Generate SARIF report
