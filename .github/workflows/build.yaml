@@ -47,8 +47,7 @@ jobs:
             --apiurl https://app.us4.sysdig.com \
             --iac \
             --console-log \
-            --json-scan-result report.json \
-            --policy=alwayspass \
+            --output-json report.json \
             --dbpath=${GITHUB_WORKSPACE}/cache/db/ \
             --cachepath=${GITHUB_WORKSPACE}/cache/scanner-cache/ \
             --iac-scan-path: ./terraform
