@@ -48,7 +48,7 @@ jobs:
             --iac \
             --console-log \
             --output-json report.json \
-            --iac-scan-path: ./terraform
+            --recursive 
 
       - name: Generate SARIF report
         run: |
