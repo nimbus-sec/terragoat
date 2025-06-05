@@ -48,7 +48,6 @@ jobs:
             --iac \
             --console-log \
             --output-json report.json \
-            --dbpath=${GITHUB_WORKSPACE}/cache/db/ \
             --cachepath=${GITHUB_WORKSPACE}/cache/scanner-cache/ \
             --iac-scan-path: ./terraform
 
