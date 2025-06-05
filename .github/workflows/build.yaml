@@ -45,7 +45,7 @@ jobs:
         run: |
           ${GITHUB_WORKSPACE}/cache/sysdig-cli-scanner \
             --apiurl https://app.us4.sysdig.com \
-            --mode=iac \
+            --iac \
             --console-log \
             --json-scan-result report.json \
             --policy=alwayspass \
